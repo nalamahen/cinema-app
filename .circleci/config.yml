@@ -1,23 +1,124 @@
-# Use the latest 2.1 version of CircleCI pipeline process engine.
-# See: https://circleci.com/docs/configuration-reference
 version: 2.1
 
-# Orbs are reusable packages of CircleCI configuration that you may share across projects, enabling you to create encapsulated, parameterized commands, jobs, and executors that can be used across multiple projects.
-# See: https://circleci.com/docs/orb-intro/
-orbs:
-  # See the Node orb documentation here: https://circleci.com/developer/orbs/orb/circleci/node
-  node: circleci/node@5.2
+jobs:
+  build:
+    docker:
+      - image: circleci/node:15.0.1
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run:
+          name: Show current branch
+          command: echo ${CIRCLE_BRANCH}
+      - restore_cache:
+          keys:
+            - app-{{ checksum "package.json" }}
+            - app-
+      - run:
+          name: Install dependencies
+          command: npm install
+      - save_cache:
+          paths:
+            - node_modules
+          key: app-{{ checksum "package.json" }}
 
-# Orchestrate jobs using workflows
-# See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
+deploy-to-aws-s3:
+  docker:
+    - image: circleci/node:15.0.1
+  working_directory: ~/repo
+  steps:
+    - checkout
+    - run:
+        name: Show current branch
+        command: echo ${CIRCLE_BRANCH}
+    - restore_cache:
+        keys:
+          - app-{{ checksum "package.json" }}
+          - app-
+    - run:
+        name: Install AWS CLI
+        command: sudo apt-get update
+          sudo apt-get install awscli
+          sudo apt-get install -y python3-pip python3-dev build-essential
+    - run:
+        name: Build Project
+        command: |
+          npm install
+          npm run build
+          cd build
+          zip -r ../build.zip * .[^.]*
+          echo "Build successful"
+    - run:
+        name: Deploy to AWS S3
+        command: |
+        if [ "${CIRCLE_BRANCH}" == "master" ]; then
+          aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_PRODUCTION} --delete
+        elif [ "${CIRCLE_BRANCH}" == "staging" ]; then
+          aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_STAGING} --delete
+        elif [ "${CIRCLE_BRANCH}" == "development" ]; then
+          aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_DEVELOPMENT} --delete
+        else
+          echo "Branch not found"
+        fi
+
+deploy-to-aws-cloudfront
+  docker:
+    - image: circleci/node:15.0.1
+  working_directory: ~/repo
+  steps:
+    - checkout
+    - run:
+        name: Show current branch
+        command: echo ${CIRCLE_BRANCH}
+    - run:
+        name: Install AWS CLI
+        command: 
+          sudo apt-get update
+          sudo apt-get install awscli
+          sudo apt-get install -y python3-pip python3-dev build-essential
+    - run:
+        name: Build Project
+        command: |
+          aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
+          echo "Invalidation created"
+          cd build
+          zip -r ../build.zip * .[^.]*
+          echo "Build successful"
+    - run:
+        name: Deploy to AWS cloudfront
+        command: |
+        aws configure set preview.cloudfront true
+        if [ "${CIRCLE_BRANCH}" == "master" ]; then
+          aws cloudfront create-invalidation --distribution-id ${PRODUCTION_DISTRIBUTION_ID} --paths /\*
+        elif [ "${CIRCLE_BRANCH}" == "staging" ]; then
+          aws cloudfront create-invalidation --distribution-id ${STAGING_DISTRIBUTION_ID} --paths /\*
+        elif [ "${CIRCLE_BRANCH}" == "development" ]; then
+          aws cloudfront create-invalidation --distribution-id ${DEVELOPMENT_DISTRIBUTION_ID} --paths /\*
+        else
+          echo "Branch not found"
+        fi
+
 workflows:
-  sample: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  version: 2
+  build-deploy:
     jobs:
-      - node/test:
-          # This is the node version to use for the `cimg/node` tag
-          # Relevant tags can be found on the CircleCI Developer Hub
-          # https://circleci.com/developer/images/image/cimg/node
-          version: '16.10'
-          # If you are using yarn, change the line below from "npm" to "yarn"
-          pkg-manager: npm
+      - build
+      - deploy-to-aws-s3:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - master
+                - staging
+                - development
+      - deploy-to-aws-cloudfront:
+          requires:
+            - deploy-to-aws-s3
+            filters:
+              branches:
+                only:
+                  - master
+                  - staging
+                  - development
+
