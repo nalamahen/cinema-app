@@ -27,6 +27,14 @@ jobs:
       - image: circleci/node:15.0.1
     working_directory: ~/repo
     steps:
+      - checkout
+      - run:
+          name: Show current branch
+          command: echo ${CIRCLE_BRANCH}
+      - restore_cache:
+          keys:
+            - app-{{ checksum "package.json" }}
+            - app-
       - run:
           name: Install AWS CLI
           command: |
@@ -59,6 +67,10 @@ jobs:
       - image: circleci/node:15.0.1
     working_directory: ~/repo
     steps:
+      - checkout
+      - run:
+          name: Show current branch
+          command: echo ${CIRCLE_BRANCH}
       - run:
           name: Install AWS CLI
           command: |
@@ -66,24 +78,44 @@ jobs:
             sudo apt-get install awscli
             sudo apt-get install -y python3-pip python3-dev build-essential
       - run:
+          name: Create CloudFront Invalidation
+          command: |
+            aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
+            echo "Invalidation created"
+      - run:
           name: Deploy to AWS CloudFront
           command: |
-            aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
+            aws configure set preview.cloudfront true
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              aws cloudfront create-invalidation --distribution-id ${PRODUCTION_DISTRIBUTION_ID} --paths "/*"
+            elif [ "${CIRCLE_BRANCH}" == "staging" ]; then
+              aws cloudfront create-invalidation --distribution-id ${STAGING_DISTRIBUTION_ID} --paths "/*"
+            elif [ "${CIRCLE_BRANCH}" == "development" ]; then
+              aws cloudfront create-invalidation --distribution-id ${DEVELOPMENT_DISTRIBUTION_ID} --paths "/*"
+            else
+              echo "Branch not found"
+            fi
 
 workflows:
   version: 2
-  build_and_deploy:
+  build-deploy:
     jobs:
       - build
       - deploy-to-aws-s3:
           requires:
             - build
+          filters:
+            branches:
+              only:
+                - master
+                - staging
+                - development
       - deploy-to-aws-cloudfront:
           requires:
             - deploy-to-aws-s3
-            filters:
-              branches:
-                only:
-                  - master
-                  - staging
-                  - development
+          filters:
+            branches:
+              only:
+                - master
+                - staging
+                - development
