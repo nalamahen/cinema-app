@@ -35,31 +35,31 @@ deploy-to-aws-s3:
         keys:
           - app-{{ checksum "package.json" }}
           - app-
-    - run:
-        name: Install AWS CLI
-        command: sudo apt-get update
-          sudo apt-get install awscli
-          sudo apt-get install -y python3-pip python3-dev build-essential
-    - run:
-        name: Build Project
-        command: |
-          npm install
-          npm run build
-          cd build
-          zip -r ../build.zip * .[^.]*
-          echo "Build successful"
-    - run:
-        name: Deploy to AWS S3
-        command: |
-        if [ "${CIRCLE_BRANCH}" == "master" ]; then
-          aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_PRODUCTION} --delete
-        elif [ "${CIRCLE_BRANCH}" == "staging" ]; then
-          aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_STAGING} --delete
-        elif [ "${CIRCLE_BRANCH}" == "development" ]; then
-          aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_DEVELOPMENT} --delete
-        else
-          echo "Branch not found"
-        fi
+            - run:
+                name: Install AWS CLI
+                command: sudo apt-get update
+                  sudo apt-get install awscli
+                  sudo apt-get install -y python3-pip python3-dev build-essential
+            - run:
+                name: Build Project
+                command: |
+                  npm install
+                  npm run build
+                  cd build
+                  zip -r ../build.zip * .[^.]*
+                  echo "Build successful"
+            - run:
+                name: Deploy to AWS S3
+                command: |
+                if [ "${CIRCLE_BRANCH}" == "master" ]; then
+                  aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_PRODUCTION} --delete
+                elif [ "${CIRCLE_BRANCH}" == "staging" ]; then
+                  aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_STAGING} --delete
+                elif [ "${CIRCLE_BRANCH}" == "development" ]; then
+                  aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_DEVELOPMENT} --delete
+                else
+                  echo "Branch not found"
+                fi
 
 deploy-to-aws-cloudfront
   docker:
