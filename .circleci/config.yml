@@ -57,7 +57,7 @@ jobs:
             elif [ "${CIRCLE_BRANCH}" == "staging" ]; then
               aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_STAGING} --delete
             elif [ "${CIRCLE_BRANCH}" == "development" ]; then
-              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_DEVELOPMENT} --delete
+              aws --region ${AWS_REGION} s3 sync ~/repo/build s3://${AWS_BUCKET_DEV} --delete
             else
               echo "Branch not found"
             fi
